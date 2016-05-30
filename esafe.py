@@ -1,7 +1,11 @@
 ## EE/CS 159 Project
 ## Miguel Aroc-Ouellette
 
-# TODO: Check minimum of pages!
+# TODO: Improve Learning rate formula
+# TODO: Find appropriate leraning rate
+# TODO: Find appropriate # of hidden states
+# TODO: Find appropriate e (safe probaility variable)
+# TODO: Improve rank comparison, maybe group by 10 minutes and take average?
 
 import numpy as np
 import random as rnd
@@ -23,7 +27,7 @@ class eSafe:
         #constant
         self.num_states =_num_states + 2                #+2 for start & end state
         self.num_obs = _num_obs
-        self.learn_rate = 0.5                           #learning rate
+        self.learn_rate = 0.1                           #learning rate
         self.e = 0.8                                    #probability that algorithm picks safest (most probable) event
         self.start = 0                                  #start state index
         self.end = self.num_states - 1                  #end state index
@@ -98,17 +102,25 @@ class eSafe:
                 seq[0] = seq[0][1:]
                 seq[-1] = seq[-1][:-1]
                 self.seq = [int(x[2:-1])+1 for x in seq] #Note: +1 to handle start state!
+                #print "Training on: "+','.join(map(str,self.seq))\
+
+                if len(self.seq)==1:
+                    continue #skip length 1 sequences
+
                 self.curr_state = self.start #reset to start state
-                #print "Training on: "+','.join(map(str,self.seq))
-                prob[count]=self.get_prob_seq(self.seq)
+
+                #evaluate
+                prob[count] = self.eval_seq(self.seq)
+
+                #train
                 self.train_on_seq()
                 count+=1
-                if count%5000==0:
+                if count%100==0:
                     print "Processed "+str(count)+"..."
                 if count >= num_seq:
                     break
 
-        #self.plot_conv(prob)
+        self.plot_conv(prob,'Percent Rank Offset',100) #plot every 100th
         #print "Transition Matrix: "
         #print self.trans
         #print "Observation Matrix: "
@@ -116,11 +128,11 @@ class eSafe:
 
         return prob
 
-    def plot_conv(self,prob):
+    def plot_conv(self,data,label_y,subsample):
         plt.style.use('ggplot')
 
-        plt.plot(prob)
-        plt.ylabel('Proability')
+        plt.plot(data[::subsample])
+        plt.ylabel(label_y)
         plt.xlabel('Sequence count')
         plt.show()
 
@@ -180,9 +192,52 @@ class eSafe:
 
         return
 
-    def get_prob_seq(self,seq):
+    def eval_seq(self, seq):
+        """Walks through most probable sequence state and evaluates at each step
+        how well the algorithm does at predicting the next obvservation.
+        Input: seq is the observation sequence.
+        Output: Average rank offset (as a percent of total number of observations).
+                i.e. if next observation is ranked as 10, and there are 200 possible observations
+                then at that time step the relative rank is 10/200=0.05.
+                Therefore, low value is GOOD, high is BAD. BEST is rank 0 (i.e. most probable)."""
+
+        offset = 0
+
+        for i in range(len(seq) - 1):
+            #get most probable current state representing the sequence we've seen thus far
+            _, curr_state = self.get_prob_seq(seq[:(i + 1)],False)
+
+            #get the ranked most probable observations
+            prob_rank = self.get_next_obs(curr_state)
+
+            #check whether next observation in sequence is in our top pages
+            relative_rank = np.where(prob_rank==seq[i+1])[0][0]/(self.num_obs*1.0)
+
+            #average across sequence
+            offset = relative_rank/(len(seq)-1)
+
+        return offset
+
+    def get_next_obs(self, curr_state):
+        """Returns the next pages ranked by probability of occurence given the current state."""
+
+        prob = [0]*self.num_obs
+        for state in range(self.num_states):
+            #iterate through each state and take max probability on each page
+            #TODO SHOUL BE A SUM
+            prob_next = np.multiply(self.obs[state,:], self.trans[curr_state,state])
+            prob = np.array([(prob[i]+prob_next[i]) for i in range(self.num_obs)])
+
+        #sort in decreasing probability
+        top = prob.argsort()[::-1]
+
+        return top
+
+    def get_prob_seq(self, seq, end=True):
         """Returns the probability of a given observation sequence.
-        Uses Viterbi Algorithm and Dynamic Programming."""
+        Uses Viterbi Algorithm and Dynamic Programming.
+        Optinal input denotes if we should finish on the end state or not,
+        if not then function also outputs last state."""
 
         #small log numbers
         log_zero = -1e9
@@ -199,7 +254,7 @@ class eSafe:
         # Stores most likely hidden state sequence
         state_seq = [[[''] for i in range(self.num_states)] for j in range(seq_len)]
 
-        # always start in start state
+        # always start in start state (in log form
         prob[0] = [log_zero]*self.num_states
         prob[0][self.start] = 0
 
@@ -220,6 +275,8 @@ class eSafe:
                     if cur_prob > best_prob:
                         max_state, best_prob = prev, cur_prob
 
+                    #print "("+str(length)+") "+str(prev)+"->"+str(state)+": "+str(np.exp(cur_prob))
+
                     # update best probability
                     prob[length][state] = best_prob
                     # update sequence
@@ -227,6 +284,15 @@ class eSafe:
 
             prob[length] = prob[length][:]   # copies by value
             state_seq[length] = state_seq[length][:]
+
+        if not end:
+            max_ind = 0
+            for i in range(self.num_states):  # find most-likely index of entire sequence
+                if prob[seq_len - 1][i] > prob[seq_len - 1][max_ind]:
+                    max_ind = i
+
+            #output (probability, last state)
+            return (np.exp(prob[-1][max_ind]), int(state_seq[-1][max_ind][-1]))
 
         # get maximum sequence that brought you to end state
         #print state_seq[-1][self.end][1:]
@@ -238,23 +304,23 @@ def main():
     # Test on sample
     path="D:\\Datasets\\ML_Datasets\\seq_data\\"
     fname='data_2_1.txt' #max value is 3388
-    #mylearner=eSafe(4,3388)
-    #mylearner.train(path+fname,100000)
+    mylearner=eSafe(4,3388)
+    mylearner.train(path+fname,10000)
 
     #plot while varying learning rate
-    plt.style.use('ggplot')
-    alpha=np.arange(0,1,0.1)
-    for i in range(len(alpha)):
-        mylearner=eSafe(4,3388)
-        mylearner.learn_rate=alpha[i]
-        prob = mylearner.train(path+fname,100000)
-        plt.plot(prob,label=str(alpha[i]))
-        print "Processed rate = "+str(alpha[i])
-
-    plt.legend(loc='upper right')
-    plt.ylabel('Probability')
-    plt.xlabel('Sequence count')
-    plt.show()
+##    plt.style.use('ggplot')
+##    alpha=np.arange(0,1,0.1)
+##    for i in range(len(alpha)):
+##        mylearner=eSafe(4,3388)
+##        mylearner.learn_rate=alpha[i]
+##        prob = mylearner.train(path+fname,100000)
+##        plt.plot(prob,label=str(alpha[i]))
+##        print "Processed rate = "+str(alpha[i])
+##
+##    plt.legend(loc='upper right')
+##    plt.ylabel('Probability')
+##    plt.xlabel('Sequence count')
+##    plt.show()
 
 ##    myfile= open(path+fname)
 ##    count = 0
@@ -292,7 +358,7 @@ def main():
 ##    mylearner=eSafe(2,3,trans,obs)
 ##
 ##    #viterbi test
-##    mylearner.get_prob_seq([2,1,0])
+##    print mylearner.get_prob_seq([2],False)
 
 if __name__ == '__main__':
     main()
