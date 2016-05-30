@@ -6,6 +6,7 @@
 # TODO: Find appropriate # of hidden states
 # TODO: Find appropriate e (safe probaility variable)
 # TODO: Improve rank comparison, maybe group by 10 minutes and take average?
+#           Ignore bad data
 
 import numpy as np
 import random as rnd
@@ -35,6 +36,9 @@ class eSafe:
         rnd.seed(123456)
 
         #var
+        self.eval_mode = "None"                          #evaluation mode. set with set_eval_mode()
+        self.eval_param = None                           #evaluation parameters
+        self.eval_output = []                            #evaluation output
         self.seq = None                                  #current observation sequence
         self.curr_state = None                           #current state
         self.obs_count = np.zeros([self.num_states,_num_obs]) #count for observations
@@ -81,9 +85,9 @@ class eSafe:
                 #print "Randomizing on observation "+str(curr_ob)
             #print "Picked "+str(new_state)
             self.update_event(new_state, curr_ob)
-            curr_state = new_state
+            self.curr_state = new_state
 
-            assert curr_state != self.start #should never be in start state after 1st transition
+            assert self.curr_state != self.start #should never be in start state after 1st transition
 
         #go to end state
         self.update_event(self.end,self.seq[-1])
@@ -91,50 +95,40 @@ class eSafe:
         return
 
     def train(self, filename, num_seq):
-        """ Trains on the sequences found in the input file. Lazily read.
-            Each sequence should occupy a new line and be commat separated."""
+        """ Trains on the sequences found in the input file. Lazily read."""
 
         count=0
-        prob=[0]*num_seq
         with open(filename,'r') as f:
             for line in f:
                 seq = line.rstrip()[1:-1].split(',')[data_dict['seq']:]
                 seq[0] = seq[0][1:]
                 seq[-1] = seq[-1][:-1]
-                self.seq = [int(x[2:-1])+1 for x in seq] #Note: +1 to handle start state!
+                self.seq = [int(x[2:-1]) for x in seq]
                 #print "Training on: "+','.join(map(str,self.seq))\
-
-                if len(self.seq)==1:
-                    continue #skip length 1 sequences
 
                 self.curr_state = self.start #reset to start state
 
-                #evaluate
-                prob[count] = self.eval_seq(self.seq)
+                #evaluate current sequence BEFORE training
+                eval_success = self.eval_wrapper()
 
                 #train
                 self.train_on_seq()
-                count+=1
+
+                #only increment counter if evaluation was succesful
+                if eval_success:
+                    count+=1
                 if count%100==0:
                     print "Processed "+str(count)+"..."
                 if count >= num_seq:
                     break
 
-        self.plot_conv(prob,'Percent Rank Offset',100) #plot every 100th
+        self.eval_plot()
         #print "Transition Matrix: "
         #print self.trans
         #print "Observation Matrix: "
         #print self.obs
 
-        return prob
-
-    def plot_conv(self,data,label_y,subsample):
-        plt.style.use('ggplot')
-
-        plt.plot(data[::subsample])
-        plt.ylabel(label_y)
-        plt.xlabel('Sequence count')
-        plt.show()
+        return
 
     def get_safe(self,observation):
         """ Returns the most probable state given an observation, either simply
@@ -157,25 +151,25 @@ class eSafe:
         #print "Safe state: "+str(safe)+" has prob "+str(safe_prob)
         return safe
 
-    def update_event(self,state, observation):
+    def update_event(self, state, observation):
         """ Updates the transition and observation matrices based on a new
             occurence of the input state & observation."""
 
-        if state != self.curr_state:
-            #update state as well
-            self.update_distr(self.trans[self.curr_state, :], state,
-                                        self.state_count[self.curr_state,:])
-            self.state_count[self.curr_state,state] +=1
+        #update observation distribution
+        self.update_distr(self.obs[state, :], observation, self.obs_count[state,:])
+        self.obs_count[state, observation] += 1
+
+        #update state
+        self.update_distr(self.trans[self.curr_state, :], state, self.state_count[self.curr_state,:])
+        self.state_count[self.curr_state, state] +=1
 
         return
 
     def update_distr(self, distr, index, count_vec):
         """ Updates distribution given the update term, where the
-                update is a value to be ADDED to the specified index.
-            Update term uses the count_vec to modify learning rate by frequency;
-                count_vec be indexed in the same way as the distribution."""
+                update is a value to be ADDED to the specified index."""
 
-        length = len(distr)
+        #length = len(distr)
 
         #update size. Function of learning rate and relative count
         #   The more frequently is seen, the lower the smaller the update
@@ -192,29 +186,85 @@ class eSafe:
 
         return
 
+    ### EVALUATION METHODS ###
+
+    def set_eval_mode(self, mode, input_param = None):
+        """Set the evaluation mode and input parameters."""
+        self.eval_mode = mode
+        self.eval_param = input_param
+
+
+        if self.eval_mode == "Rank Offset":
+            # Input parameter is the maximum sequence length to consider (inclusive)
+            # Output is plot of offset for each sequence position
+
+            if input_param is None:
+                print "Please supply max sequence length!"
+                raise (AssertionError)
+
+            self.eval_output = [[] for _ in range(input_param)]
+
+    def eval_wrapper(self):
+        """Evaluates current sequence based on different modes.
+           Returns TRUE if evaluation was succesful, FALSE otherwise."""
+
+        if self.eval_mode == "None":
+            return True
+        elif self.eval_mode == "Rank Offset":
+            seq_len = len(self.seq)
+
+            if seq_len != self.eval_param:
+                return False
+
+            prob_seq = self.eval_seq(self.seq)
+            for i in range(self.eval_param):
+                self.eval_output[i] += [prob_seq[i]]
+
+        return True
+
+    def eval_plot(self):
+        """Prints data for different evaluation modes."""
+        plt.style.use('ggplot')
+
+        if self.eval_mode == "None":
+            return
+        elif self.eval_mode == "Rank Offset":
+            for i in range(self.eval_param):
+                plt.plot(self.eval_output[i], label = "Seq Pos#"+str(i))
+                plt.ylabel('Rank Offset Percentile')
+                plt.xlabel('Sequence Count')
+                plt.title('Rank Offset for Sequences of Length '+str(self.eval_param))
+                plt.legend()
+                plt.show()
+
+
     def eval_seq(self, seq):
         """Walks through most probable sequence state and evaluates at each step
         how well the algorithm does at predicting the next obvservation.
         Input: seq is the observation sequence.
-        Output: Average rank offset (as a percent of total number of observations).
+        Output: Rank offset (as a percent of total number of observations) per sequence step.
                 i.e. if next observation is ranked as 10, and there are 200 possible observations
                 then at that time step the relative rank is 10/200=0.05.
                 Therefore, low value is GOOD, high is BAD. BEST is rank 0 (i.e. most probable)."""
 
-        offset = 0
+        # Output Notes: Index 0 is predicting the first observation given no data
+        #               Index 1 is predicting the second observation given the first
+        #               Index n is predicting the (n+1)th observation given n observations
+        # Note: (n)th observation = seq[n-1]
+        offset = [0]*(len(seq))
 
-        for i in range(len(seq) - 1):
-            #get most probable current state representing the sequence we've seen thus far
-            _, curr_state = self.get_prob_seq(seq[:(i + 1)],False)
+        for n in range(len(seq)):
+            #get most probable current state given the sequence we've seen thus far
+            if n != self.start:
+                _, curr_state = self.get_prob_seq(seq[:n],False) #up to, but excluding i
+            else:
+                curr_state = self.start
 
             #get the ranked most probable observations
             prob_rank = self.get_next_obs(curr_state)
 
-            #check whether next observation in sequence is in our top pages
-            relative_rank = np.where(prob_rank==seq[i+1])[0][0]/(self.num_obs*1.0)
-
-            #average across sequence
-            offset = relative_rank/(len(seq)-1)
+            #check rank
+            offset[n] = np.where(prob_rank==seq[n])[0][0]/(self.num_obs*1.0)
 
         return offset
 
@@ -224,7 +274,6 @@ class eSafe:
         prob = [0]*self.num_obs
         for state in range(self.num_states):
             #iterate through each state and take max probability on each page
-            #TODO SHOUL BE A SUM
             prob_next = np.multiply(self.obs[state,:], self.trans[curr_state,state])
             prob = np.array([(prob[i]+prob_next[i]) for i in range(self.num_obs)])
 
@@ -240,7 +289,7 @@ class eSafe:
         if not then function also outputs last state."""
 
         #small log numbers
-        log_zero = -1e9
+        log_zero = -1e20
 
         #append None for start state
         seq = list([None]+seq)
@@ -271,7 +320,11 @@ class eSafe:
                 for prev in range(self.num_states):
                     # cur_prob is the probability of transitioning to 'state'
                     # from 'prev' state and observing the correct state.
-                    cur_prob = prob[length - 1][prev] + np.log(self.trans[prev][state]) + np.log(self.obs[state][seq[length]])
+                    if self.trans[prev][state]==0 or self.obs[state][seq[length]]==0:
+                        cur_prob = log_zero #handles log(0)
+                    else:
+                        cur_prob = prob[length - 1][prev] + np.log(self.trans[prev][state]) + np.log(self.obs[state][seq[length]])
+
                     if cur_prob > best_prob:
                         max_state, best_prob = prev, cur_prob
 
@@ -300,12 +353,16 @@ class eSafe:
         # return result. Note, always end on end state!
         return np.exp(prob[-1][self.end])
 
+def plot_by_seq_len(self, learner, length_range):
+    pass
+
 def main():
     # Test on sample
     path="D:\\Datasets\\ML_Datasets\\seq_data\\"
     fname='data_2_1.txt' #max value is 3388
     mylearner=eSafe(4,3388)
-    mylearner.train(path+fname,10000)
+    mylearner.set_eval_mode("Rank Offset",4)
+    mylearner.train(path+fname,100)
 
     #plot while varying learning rate
 ##    plt.style.use('ggplot')
