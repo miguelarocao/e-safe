@@ -6,7 +6,7 @@
 # TODO: Find appropriate # of hidden states
 # TODO: Find appropriate e (safe probaility variable)
 # TODO: Improve rank comparison, maybe group by 10 minutes and take average?
-#           Ignore bad data
+# TODO: Add distribution based comparison
 
 import numpy as np
 import random as rnd
@@ -19,6 +19,7 @@ data_dict={'user_id':0,
            'seq':3}
 
 class eSafe:
+    ### Initialization Methods ###
     def __init__(self, _num_states, _num_obs, prior_trans = None, prior_obs = None):
         """
         Constructor.
@@ -67,6 +68,8 @@ class eSafe:
                 self.obs[row,:]=np.random.dirichlet(np.ones(self.num_obs),size=1)
 
         return
+
+    ### TRAINING METHODS ###
 
     def train_on_seq(self):
         """ Trains on the current sequence. """
@@ -117,10 +120,10 @@ class eSafe:
                 #only increment counter if evaluation was succesful
                 if eval_success:
                     count+=1
-                if count%100==0:
-                    print "Processed "+str(count)+"..."
-                if count >= num_seq:
-                    break
+                    if count%100==0:
+                        print "Processed "+str(count)+"..."
+                    if count >= num_seq:
+                        break
 
         self.eval_plot()
         #print "Transition Matrix: "
@@ -202,7 +205,7 @@ class eSafe:
                 print "Please supply max sequence length!"
                 raise (AssertionError)
 
-            self.eval_output = [[] for _ in range(input_param)]
+            self.eval_output = [[] for _ in range(input_param*2)] #includes naive output
 
     def eval_wrapper(self):
         """Evaluates current sequence based on different modes.
@@ -213,12 +216,14 @@ class eSafe:
         elif self.eval_mode == "Rank Offset":
             seq_len = len(self.seq)
 
-            if seq_len != self.eval_param:
+            if seq_len < self.eval_param:
                 return False
 
-            prob_seq = self.eval_seq(self.seq)
+            prob_seq = self.eval_seq(self.seq[:self.eval_param])
+            prob_naive = self.eval_naive_seq(self.seq[:self.eval_param]) #in case the sequence is longer
             for i in range(self.eval_param):
                 self.eval_output[i] += [prob_seq[i]]
+                self.eval_output[i + self.eval_param] += [prob_naive[i]]
 
         return True
 
@@ -230,7 +235,10 @@ class eSafe:
             return
         elif self.eval_mode == "Rank Offset":
             for i in range(self.eval_param):
-                plt.plot(self.eval_output[i], label = "Seq Pos#"+str(i))
+                plt.plot(self.eval_output[i], label = "eSafe Pos#"+str(i))
+                plt.plot(self.eval_output[i + self.eval_param], label = "Naive Pos#"+str(i))
+                plt.plot([0, len(self.eval_output[i])], [0.5, 0.5],
+                            label = "Random Baseline", color='k', linestyle='-', linewidth=2)
                 plt.ylabel('Rank Offset Percentile')
                 plt.xlabel('Sequence Count')
                 plt.title('Rank Offset for Sequences of Length '+str(self.eval_param))
@@ -261,14 +269,14 @@ class eSafe:
                 curr_state = self.start
 
             #get the ranked most probable observations
-            prob_rank = self.get_next_obs(curr_state)
+            prob_rank = self.get_obs_rank(curr_state)
 
             #check rank
             offset[n] = np.where(prob_rank==seq[n])[0][0]/(self.num_obs*1.0)
 
         return offset
 
-    def get_next_obs(self, curr_state):
+    def get_obs_rank(self, curr_state):
         """Returns the next pages ranked by probability of occurence given the current state."""
 
         prob = [0]*self.num_obs
@@ -353,6 +361,34 @@ class eSafe:
         # return result. Note, always end on end state!
         return np.exp(prob[-1][self.end])
 
+    def eval_naive_seq(self, seq):
+        """Same as eval_seq but uses naive ranking."""
+
+        # Output Notes: Index 0 is predicting the first observation given no data
+        #               Index 1 is predicting the second observation given the first
+        #               Index n is predicting the (n+1)th observation given n observations
+        # Note: (n)th observation = seq[n-1]
+        offset = [0]*(len(seq))
+
+        for n in range(len(seq)):
+            #get the ranked most probable observations
+            naive_rank = self.get_naive_rank()
+
+            #check rank
+            offset[n] = np.where(naive_rank==seq[n])[0][0]/(self.num_obs*1.0)
+
+        return offset
+
+    def get_naive_rank(self):
+        """ Uses the observation count to rank the most probable outputs. """
+
+        counts = np.sum(self.obs_count, 0)
+
+        #perturb by small deviations to break ties (i.e. all 0s)
+        counts += np.random.rand(self.num_obs)/10
+
+        return counts.argsort()[::-1]
+
 def plot_by_seq_len(self, learner, length_range):
     pass
 
@@ -361,8 +397,8 @@ def main():
     path="D:\\Datasets\\ML_Datasets\\seq_data\\"
     fname='data_2_1.txt' #max value is 3388
     mylearner=eSafe(4,3388)
-    mylearner.set_eval_mode("Rank Offset",4)
-    mylearner.train(path+fname,100)
+    mylearner.set_eval_mode("Rank Offset",5)
+    mylearner.train(path+fname,10000)
 
     #plot while varying learning rate
 ##    plt.style.use('ggplot')
