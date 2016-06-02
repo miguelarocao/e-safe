@@ -323,17 +323,22 @@ def main():
     # Test on sample
     path="D:\\Datasets\\ML_Datasets\\seq_data\\"
     fname='data_2_1.txt' #max value is 3388
-    #mylearner=eSafe(4,3388)
-    #mylearner.set_eval_mode("Rank Offset",2)
-    #mylearner.train(path+fname,10)
 
-    mylearner = Naive(3389)
+    #KL Distribution divergence example
     safelearner = eSafe(4,3389)
-    #safelearner.train_on_seq([1,2,3])
-    mytrainer = TrainingInterface({"naive":mylearner, "safe":safelearner})
-    #mytrainer.set_eval_mode("Rank Offset",2)
-    mytrainer.train(path+fname,100, 10, 2)
-    safelearner.dump_distr("safe_mtrx.dat")
+    with open('hmm_base_10k.dat','rb') as f:
+        data_hmm = pickle.load(f)   #previously trained on first 10k sequences in data_2_1.txt
+    mytrainer = TrainingInterface({"safe":safelearner})
+    mytrainer.set_eval_mode("Kullback-Leibler",data_hmm)
+    mytrainer.train(path+fname,1000)
+
+    #Rank Offset Example
+##    mylearner = Naive(3389)
+##    safelearner = eSafe(4,3389)
+##    mytrainer = TrainingInterface({"naive":mylearner, "safe":safelearner})
+##    mytrainer.set_eval_mode("Rank Offset",2)
+##    mytrainer.train(path+fname,100, 10, 2)
+##    safelearner.dump_distr("safe_mtrx.dat")
 
 ##    myfile= open(path+fname)
 ##    count = 0

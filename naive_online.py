@@ -3,6 +3,7 @@
 import numpy as np
 import random as rnd
 import matplotlib.pyplot as plt
+import scipy.stats as stats
 
 
 data_dict={'user_id':0,
@@ -90,6 +91,17 @@ class TrainingInterface:
             for name in self.models.iterkeys():
                 self.eval_output[name] = [[] for _ in range(input_param)]
 
+        elif self.eval_mode == "Kullback-Leibler":
+            # Compares the training model's distribution with the goal distribution
+            #   using Kullback-Leibler divergence. Returns average across all states.
+
+            if ((input_param is None) or type(input_param)!=dict or ('obs' not in input_param) or ('trans' not in input_param)):
+                print "Please supply a dictionary with the obs and trans matrix! Keys: obs, trans"
+                raise (AssertionError)
+
+            for name in self.models.iterkeys():
+                self.eval_output[name] = {"trans":[],"obs":[]}
+
     def eval_wrapper(self, seq):
         """Evaluates current sequence for models based on different modes.
            Returns boolean of success."""
@@ -107,6 +119,21 @@ class TrainingInterface:
                 for i in range(self.eval_param):
                     self.eval_output[name][i] += [prob_seq[i]]
 
+        elif self.eval_mode == "Kullback-Leibler":
+            for name,model in self.models.iteritems():
+                #NOTE: KL doesn't deal well with 0s so need to perturb by a very small number to avoid NaNs
+                perturb_obs = [1e-15]*model.num_obs
+                perturb_trans = [1e-15]*model.num_states
+                # observation matrix
+                out = 0
+                for i in range(1,model.num_states): #normalized across rows, skip start state since no obs
+                    out+=stats.entropy(model.obs[i,:],self.eval_param['obs'][i,:] + perturb_obs)/model.num_states
+                self.eval_output[name]['obs'].append(out)
+                # transition matrix
+                out = 0
+                for i in range(model.num_states-1): #normalized across rows, skip end state since no transitions
+                    out+=stats.entropy(model.trans[i,:],self.eval_param['trans'][i,:] + perturb_trans)/model.num_states
+                self.eval_output[name]['trans'].append(out)
         return True
 
     def eval_plot(self, xvals):
@@ -126,7 +153,15 @@ class TrainingInterface:
                 plt.title('Rank Offset for Sequences of Length '+str(self.eval_param))
                 plt.legend()
                 plt.show()
-
+        elif self.eval_mode == "Kullback-Leibler":
+            for mtrx in self.eval_param.iterkeys():
+                for name, result in self.eval_output.iteritems():
+                    plt.plot(xvals, result[mtrx], label = name + mtrx)
+                plt.ylabel('KL Divergence (0 is similar)')
+                plt.xlabel('Sequence Count')
+                plt.title('Probability Divergence for '+mtrx+' matrix.')
+                plt.legend()
+                plt.show()
 class Naive:
     ### Initialization methods ###
     def __init__(self, _num_obs):
@@ -202,12 +237,12 @@ def main():
     #mylearner.set_eval_mode("Rank Offset",2)
     #mylearner.train(path+fname,10)
 
-    mylearner = Naive(3389)
-    mylearner2 = Naive(3389)
-    mylearner2.forget_rate = 0.5
-    mytrainer = TrainingInterface({"naive":mylearner, "forgetful":mylearner2})
-    mytrainer.set_eval_mode("Rank Offset",2)
-    mytrainer.train(path+fname,100, 10, 2)
+    #mylearner = Naive(3389)
+    #with open('hmm_base_10k.dat','rb') as f:
+    #    data_hmm = pickle.load(f)   #previously trained on first 10k sequences in data_2_1.txt
+    #mytrainer = TrainingInterface({"safe":mylearner})
+    #mytrainer.set_eval_mode("Kullback-Leibler",data_hmm)
+    #mytrainer.train(path+fname,10)
     pass
 
 if __name__ == '__main__':

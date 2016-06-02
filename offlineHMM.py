@@ -1,10 +1,16 @@
 # baseline of HMM
 
-import dataHandler
+#import dataHandler
 import sys
 import numpy as np
 import random as rnd
 from numpy import linalg as LA
+import pickle
+
+data_dict={'user_id':0,
+           'start_time':1,
+           'end_time':2,
+           'seq':3}
 
 class offlineHMM:
     def __init__(self, _num_states, _num_obs, prior_trans = None, prior_obs = None):
@@ -18,10 +24,10 @@ class offlineHMM:
         self.num_obs = _num_obs
         self.start_idx = 0                              #start state index
         self.end_idx = -1                               #end state index
-        self.word_dict={'0': 0, '1': 1, '2': 2, '3': 3, '4': 4}
+        self.word_dict={i:i for i in range(self.num_obs)}
         np.random.seed(123456)                          #set seed for reproducibility
         rnd.seed(123456)
-        
+
         #to be filled in training
         self.threshold = 0.001 #threshold for fractional change in norm
         #self.null_added = 1 #have nulls been appended?
@@ -55,14 +61,15 @@ class offlineHMM:
                 self.O[row,:]=np.random.dirichlet(np.ones(self.num_obs),size=1)
 
         return
-    
+
     def get_word_idx(self,word):
         """Returns index associated with a given word"""
         return self.word_dict[word]
-    ###################################################################################   
-    
-    def train(self, filename):
-        """Trains the HMM using the loaded data"""
+    ###################################################################################
+
+    def train(self, filename, num_seq):
+        """Trains the HMM using the loaded data.
+        train_seq specifies the number of training sequences to train on within the file"""
 
         #set seed
         np.random.seed(seed = 1)
@@ -115,16 +122,17 @@ class offlineHMM:
             A_d=np.zeros(np.shape(self.A))
             O_n=np.zeros(np.shape(self.O))
             O_d=np.zeros(np.shape(self.O))
-            
+
             with open(filename,'r') as f:
                 while True:
                     line = f.readline()
                     if line=="":
                         break
-                    self.seq = map(int,line.strip().split(','))
+
+                    self.seq = self.parse_line(line)
                     self.curr_state = self.start_idx #reset to start state
-                    print "Training on: "+','.join(map(str,self.seq))
-                    
+                    #print "Training on: "+','.join(map(str,self.seq))
+
                     alpha=np.zeros((self.num_states,len(self.seq)+1))
                     beta=np.zeros((self.num_states,len(self.seq)+1))
                     #expectation step
@@ -138,6 +146,8 @@ class offlineHMM:
                     if sequence_no%100 == 0:
                         print "count = " + str(count) + " sequence = " + str(sequence_no)
                     sequence_no += 1
+                    if sequence_no == num_seq:
+                        break
 
                 self.A = self.get_division(A_n, A_d)
                 self.O = self.get_division(O_n, O_d)
@@ -148,13 +158,13 @@ class offlineHMM:
                 print "count = " + str(count) + " A_norm = " + str(A_norm) + " A_norm_old = " + str(A_norm_old) + \
                 " O_norm = " + str(O_norm) + " O_norm_old = " + str(O_norm_old)
                 count += 1
-        
+
         print "Transition Matrix: "
         print self.A
         print "Observation Matrix: "
-        print self.O      
-        
-        
+        print self.O
+
+
     def e_step(self,alpha,beta,train):
         """Uses forward-backward approach to calculate expectation"""
 
@@ -316,13 +326,38 @@ class offlineHMM:
         res = np.copy(M_num/M_den)
         res = np.nan_to_num(res)
         return res
-    
+
     ###################################################################################
-    
+        ### I/O METHODS ###
+
+    def parse_line(self, line):
+        """ Parses line """
+        seq = line.rstrip()[1:-1].split(',')[data_dict['seq']:]
+        seq[0] = seq[0][1:]
+        seq[-1] = seq[-1][:-1]
+
+        return [int(x[2:-1]) for x in seq]
+
+    def dump_distr(self, filename):
+        """ Pickles the observation and transition matrices to the specfied file."""
+        output = {"obs":np.transpose(self.O), "trans":self.A}
+        with open(filename,"wb") as f:
+            pickle.dump(output, f)
+
+    def load_distr(self, filename):
+        """ Unpickles the observation and transition matrices from the specified file."""
+        with open(filename, "rb") as f:
+            in_dict = pickle.load(f)
+            self.A = in_dict["trans"]
+            self.O = in_dict["obs"]
+
 def main():
     # Test on sample
-    my_alg = offlineHMM(3,5)
-    my_alg.train("sample_data.txt")
+    path="D:\\Datasets\\ML_Datasets\\seq_data\\"
+    fname='data_2_1.txt'
+    my_alg = offlineHMM(4,3389)
+    my_alg.train(path+fname,10000)
+    my_alg.dump_distr('hmm_base.dat')
 
 if __name__ == '__main__':
     main()
