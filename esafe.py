@@ -27,7 +27,7 @@ class eSafe:
         #constant
         self.num_states =_num_states + 2                #+2 for start & end state
         self.num_obs = _num_obs
-        self.learn_rate = 0.1                           #learning rate
+        self.learn_rate = 0.1/_num_obs                     #learning rate
         self.e = 0.8                                    #probability that algorithm picks safest (most probable) event
         self.start = 0                                  #start state index
         self.end = self.num_states - 1                  #end state index
@@ -177,7 +177,7 @@ class eSafe:
         if np.isnan(update): #handles division by zero
             update = self.learn_rate
 
-        distr[index] *= 1 + update
+        distr[index] += update
         distr /= sum(distr)
 
         assert abs(sum(distr) - 1) < 1e-9 #allows for rounding errors
@@ -322,23 +322,29 @@ def plot_by_seq_len(self, learner, length_range):
 def main():
     # Test on sample
     path="D:\\Datasets\\ML_Datasets\\seq_data\\"
+
+    #path="D:/Assignments/CS 159/e-safe"
+#    path=""
     fname='data_2_1.txt' #max value is 3388
-
+#
     #KL Distribution divergence example
-    safelearner = eSafe(4,3389)
-    with open('hmm_base_10k.dat','rb') as f:
-        data_hmm = pickle.load(f)   #previously trained on first 10k sequences in data_2_1.txt
-    mytrainer = TrainingInterface({"safe":safelearner})
-    mytrainer.set_eval_mode("Kullback-Leibler",data_hmm)
-    mytrainer.train(path+fname,1000)
+#    safelearner = eSafe(4,3389)
+#    with open('hmm_base_10k.dat','r') as f:
+#        data_hmm = pickle.load(f)   #previously trained on first 10k sequences in data_2_1.txt
+#    mydict = {"safe":safelearner}   
+#    mydict["safe2"] = safelearner2
+#    mytrainer = TrainingInterface(mydict)
+#    mytrainer.set_eval_mode("Kullback-Leibler",data_hmm)
+#    mytrainer.train(path+fname,1000)
 
-    #Rank Offset Example
-##    mylearner = Naive(3389)
-##    safelearner = eSafe(4,3389)
-##    mytrainer = TrainingInterface({"naive":mylearner, "safe":safelearner})
-##    mytrainer.set_eval_mode("Rank Offset",2)
-##    mytrainer.train(path+fname,100, 10, 2)
-##    safelearner.dump_distr("safe_mtrx.dat")
+#    #Rank Offset Example
+    mylearner = Naive(3389)
+    safelearner = eSafe(5,3389)
+
+    mytrainer = TrainingInterface({"naive":mylearner, "safe":safelearner})
+    mytrainer.set_eval_mode("Rank Offset",2)
+    mytrainer.train(path+fname,10000, 10, 2,100)
+    safelearner.dump_distr("safe_mtrx.dat")
 
 ##    myfile= open(path+fname)
 ##    count = 0

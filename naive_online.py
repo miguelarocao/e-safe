@@ -30,7 +30,7 @@ class TrainingInterface:
         self.eval_param = None                           #evaluation parameters
         self.eval_output = {name:[] for name in models.iterkeys() } #evaluation output, index by modelname
 
-    def train(self, filename, eval_length, eval_start = 0, eval_step = 1):
+    def train(self, filename, eval_length, eval_start = 0, eval_step = 1, bucket_size = 1):
         """Trains on the sequences in the files. Lazy reading.
         Inputs:
             filename is the file name.
@@ -63,8 +63,8 @@ class TrainingInterface:
                 count +=1
 
         #plot
-        xvals = np.arange(eval_start, eval_start + eval_length*eval_step, eval_step)
-        self.eval_plot(xvals)
+        xvals = np.arange(eval_start, (eval_start + eval_length*eval_step), eval_step)
+        self.eval_plot(xvals, bucket_size)
 
     def parse_line(self, line):
         """ Parses line """
@@ -135,8 +135,20 @@ class TrainingInterface:
                     out+=stats.entropy(model.trans[i,:],self.eval_param['trans'][i,:] + perturb_trans)/model.num_states
                 self.eval_output[name]['trans'].append(out)
         return True
-
-    def eval_plot(self, xvals):
+        
+    def create_bucket(self, xvals, result, bucket_size):
+        xval_bucket = []
+        to_plot = []
+        summ = 0
+        for i in range(len(result)):
+            if i % bucket_size == 0:
+                to_plot.append(summ/bucket_size)
+                xval_bucket.append(xvals[i])
+                summ = 0
+            summ = summ + result[i]
+        return (xval_bucket, to_plot)
+        
+    def eval_plot(self, xvals, bucket_size = 1):
         """Prints data for different evaluation modes."""
         plt.style.use('ggplot')
 
@@ -145,14 +157,25 @@ class TrainingInterface:
         elif self.eval_mode == "Rank Offset":
             for i in range(self.eval_param):
                 for name, result in self.eval_output.iteritems():
+                    (xvals_toplot, toplot) =  self.create_bucket(xvals, result[i], bucket_size)
+                    plt.plot(xvals_toplot, toplot, label = name + " Pos#" + str(i))
+                plt.plot([0,xvals_toplot[-1]], [0.5, 0.5],
+                            label = "Random Baseline", color='k', linestyle='-', linewidth=2)
+                plt.ylabel('Rank Offset Percentile')
+                plt.xlabel('Sequence Count')
+                plt.title('Rank Offset bucketed for Sequences of Length '+str(self.eval_param))
+                plt.legend()
+                plt.show()
+            for i in range(self.eval_param):
+                for name, result in self.eval_output.iteritems():
                     plt.plot(xvals, result[i], label = name + " Pos#" + str(i))
-                plt.plot([0,xvals[-1]], [0.5, 0.5],
+                plt.plot([0,xvals_toplot[-1]], [0.5, 0.5],
                             label = "Random Baseline", color='k', linestyle='-', linewidth=2)
                 plt.ylabel('Rank Offset Percentile')
                 plt.xlabel('Sequence Count')
                 plt.title('Rank Offset for Sequences of Length '+str(self.eval_param))
                 plt.legend()
-                plt.show()
+                plt.show()                
         elif self.eval_mode == "Kullback-Leibler":
             for mtrx in self.eval_param.iterkeys():
                 for name, result in self.eval_output.iteritems():
