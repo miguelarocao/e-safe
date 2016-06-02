@@ -12,11 +12,9 @@ import numpy as np
 import random as rnd
 import datetime
 import matplotlib.pyplot as plt
+import pickle
 
-data_dict={'user_id':0,
-           'start_time':1,
-           'end_time':2,
-           'seq':3}
+from naive_online import Naive, TrainingInterface
 
 class eSafe:
     ### Initialization Methods ###
@@ -37,11 +35,7 @@ class eSafe:
         rnd.seed(123456)
 
         #var
-        self.eval_mode = "None"                          #evaluation mode. set with set_eval_mode()
-        self.eval_param = None                           #evaluation parameters
-        self.eval_output = []                            #evaluation output
-        self.seq = None                                  #current observation sequence
-        self.curr_state = None                           #current state
+        self.curr_state = None                                #current state
         self.obs_count = np.zeros([self.num_states,_num_obs]) #count for observations
         self.state_count = np.zeros([self.num_states]*2)      #count for transitions
 
@@ -71,10 +65,12 @@ class eSafe:
 
     ### TRAINING METHODS ###
 
-    def train_on_seq(self):
+    def train_on_seq(self, seq):
         """ Trains on the current sequence. """
 
-        for curr_ob in self.seq[:-1]: #for everything but last state
+        self.curr_state = self.start #reset to start state
+
+        for curr_ob in seq[:-1]: #for everything but last state
             new_state = None
             r_safe = rnd.uniform(0,1) < self.e
             if r_safe:
@@ -93,12 +89,13 @@ class eSafe:
             assert self.curr_state != self.start #should never be in start state after 1st transition
 
         #go to end state
-        self.update_event(self.end,self.seq[-1])
+        self.update_event(self.end,seq[-1])
 
         return
 
     def train(self, filename, num_seq):
-        """ Trains on the sequences found in the input file. Lazily read."""
+        """ NOTE: Deprecated. Currently use TrainInterface.
+        Trains on the sequences found in the input file. Lazily read."""
 
         count=0
         with open(filename,'r') as f:
@@ -106,16 +103,14 @@ class eSafe:
                 seq = line.rstrip()[1:-1].split(',')[data_dict['seq']:]
                 seq[0] = seq[0][1:]
                 seq[-1] = seq[-1][:-1]
-                self.seq = [int(x[2:-1]) for x in seq]
+                seq = [int(x[2:-1]) for x in seq]
                 #print "Training on: "+','.join(map(str,self.seq))\
 
-                self.curr_state = self.start #reset to start state
-
-                #evaluate current sequence BEFORE training
-                eval_success = self.eval_wrapper()
+                #evaluate sequence BEFORE training
+                eval_success = self.eval_wrapper(seq)
 
                 #train
-                self.train_on_seq()
+                self.train_on_seq(seq)
 
                 #only increment counter if evaluation was succesful
                 if eval_success:
@@ -190,61 +185,6 @@ class eSafe:
         return
 
     ### EVALUATION METHODS ###
-
-    def set_eval_mode(self, mode, input_param = None):
-        """Set the evaluation mode and input parameters."""
-        self.eval_mode = mode
-        self.eval_param = input_param
-
-
-        if self.eval_mode == "Rank Offset":
-            # Input parameter is the maximum sequence length to consider (inclusive)
-            # Output is plot of offset for each sequence position
-
-            if input_param is None:
-                print "Please supply max sequence length!"
-                raise (AssertionError)
-
-            self.eval_output = [[] for _ in range(input_param*2)] #includes naive output
-
-    def eval_wrapper(self):
-        """Evaluates current sequence based on different modes.
-           Returns TRUE if evaluation was succesful, FALSE otherwise."""
-
-        if self.eval_mode == "None":
-            return True
-        elif self.eval_mode == "Rank Offset":
-            seq_len = len(self.seq)
-
-            if seq_len < self.eval_param:
-                return False
-
-            prob_seq = self.eval_seq(self.seq[:self.eval_param])
-            prob_naive = self.eval_naive_seq(self.seq[:self.eval_param]) #in case the sequence is longer
-            for i in range(self.eval_param):
-                self.eval_output[i] += [prob_seq[i]]
-                self.eval_output[i + self.eval_param] += [prob_naive[i]]
-
-        return True
-
-    def eval_plot(self):
-        """Prints data for different evaluation modes."""
-        plt.style.use('ggplot')
-
-        if self.eval_mode == "None":
-            return
-        elif self.eval_mode == "Rank Offset":
-            for i in range(self.eval_param):
-                plt.plot(self.eval_output[i], label = "eSafe Pos#"+str(i))
-                plt.plot(self.eval_output[i + self.eval_param], label = "Naive Pos#"+str(i))
-                plt.plot([0, len(self.eval_output[i])], [0.5, 0.5],
-                            label = "Random Baseline", color='k', linestyle='-', linewidth=2)
-                plt.ylabel('Rank Offset Percentile')
-                plt.xlabel('Sequence Count')
-                plt.title('Rank Offset for Sequences of Length '+str(self.eval_param))
-                plt.legend()
-                plt.show()
-
 
     def eval_seq(self, seq):
         """Walks through most probable sequence state and evaluates at each step
@@ -361,33 +301,20 @@ class eSafe:
         # return result. Note, always end on end state!
         return np.exp(prob[-1][self.end])
 
-    def eval_naive_seq(self, seq):
-        """Same as eval_seq but uses naive ranking."""
+    ### I/O METHODS ###
 
-        # Output Notes: Index 0 is predicting the first observation given no data
-        #               Index 1 is predicting the second observation given the first
-        #               Index n is predicting the (n+1)th observation given n observations
-        # Note: (n)th observation = seq[n-1]
-        offset = [0]*(len(seq))
+    def dump_distr(self, filename):
+        """ Pickles the observation and transition matrices to the specfied file."""
+        output = {"obs":self.obs, "trans":self.trans}
+        with open(filename,"wb") as f:
+            pickle.dump(output, f)
 
-        for n in range(len(seq)):
-            #get the ranked most probable observations
-            naive_rank = self.get_naive_rank()
-
-            #check rank
-            offset[n] = np.where(naive_rank==seq[n])[0][0]/(self.num_obs*1.0)
-
-        return offset
-
-    def get_naive_rank(self):
-        """ Uses the observation count to rank the most probable outputs. """
-
-        counts = np.sum(self.obs_count, 0)
-
-        #perturb by small deviations to break ties (i.e. all 0s)
-        counts += np.random.rand(self.num_obs)/10
-
-        return counts.argsort()[::-1]
+    def load_distr(self, filename):
+        """ Unpickles the observation and transition matrices from the specified file."""
+        with open(filename, "rb") as f:
+            in_dict = pickle.load(f)
+            self.trans = in_dict["trans"]
+            self.obs = in_dict["obs"]
 
 def plot_by_seq_len(self, learner, length_range):
     pass
@@ -396,24 +323,17 @@ def main():
     # Test on sample
     path="D:\\Datasets\\ML_Datasets\\seq_data\\"
     fname='data_2_1.txt' #max value is 3388
-    mylearner=eSafe(4,3388)
-    mylearner.set_eval_mode("Rank Offset",5)
-    mylearner.train(path+fname,10000)
+    #mylearner=eSafe(4,3388)
+    #mylearner.set_eval_mode("Rank Offset",2)
+    #mylearner.train(path+fname,10)
 
-    #plot while varying learning rate
-##    plt.style.use('ggplot')
-##    alpha=np.arange(0,1,0.1)
-##    for i in range(len(alpha)):
-##        mylearner=eSafe(4,3388)
-##        mylearner.learn_rate=alpha[i]
-##        prob = mylearner.train(path+fname,100000)
-##        plt.plot(prob,label=str(alpha[i]))
-##        print "Processed rate = "+str(alpha[i])
-##
-##    plt.legend(loc='upper right')
-##    plt.ylabel('Probability')
-##    plt.xlabel('Sequence count')
-##    plt.show()
+    mylearner = Naive(3389)
+    safelearner = eSafe(4,3389)
+    #safelearner.train_on_seq([1,2,3])
+    mytrainer = TrainingInterface({"naive":mylearner, "safe":safelearner})
+    #mytrainer.set_eval_mode("Rank Offset",2)
+    mytrainer.train(path+fname,100, 10, 2)
+    safelearner.dump_distr("safe_mtrx.dat")
 
 ##    myfile= open(path+fname)
 ##    count = 0
