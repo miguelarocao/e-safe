@@ -18,17 +18,20 @@ from naive_online import Naive, TrainingInterface
 
 class eSafe:
     ### Initialization Methods ###
-    def __init__(self, _num_states, _num_obs, prior_trans = None, prior_obs = None):
+    def __init__(self, _num_states, _num_obs,rt ,e1, prior_trans = None, prior_obs = None,  ):
         """
         Constructor.
         Optional inputs for prior distributions.
         """
-
+        # rt will be miultiplied by 1/3389 to generate the learning rate
+        # e1 is the safe probability 
         #constant
         self.num_states =_num_states + 2                #+2 for start & end state
         self.num_obs = _num_obs
-        self.learn_rate = 0.1/_num_obs                     #learning rate
-        self.e = 0.8                                    #probability that algorithm picks safest (most probable) event
+        self.learn_rate = rt/_num_obs                  #learning rate
+        print "learn rate" + str(rt)
+        print "e" + str(e1)
+        self.e = e1                                    #probability that algorithm picks safest (most probable) event
         self.start = 0                                  #start state index
         self.end = self.num_states - 1                  #end state index
         np.random.seed(123456)                          #set seed for reproducibility
@@ -321,10 +324,10 @@ def plot_by_seq_len(self, learner, length_range):
 
 def main():
     # Test on sample
-    path="D:\\Datasets\\ML_Datasets\\seq_data\\"
+ #   path="D:\\Datasets\\ML_Datasets\\seq_data\\"
 
     #path="D:/Assignments/CS 159/e-safe"
-#    path=""
+    path=""
     fname='data_2_1.txt' #max value is 3388
 #
     #KL Distribution divergence example
@@ -337,14 +340,26 @@ def main():
 #    mytrainer.set_eval_mode("Kullback-Leibler",data_hmm)
 #    mytrainer.train(path+fname,1000)
 
-#    #Rank Offset Example
-    mylearner = Naive(3389)
-    safelearner = eSafe(5,3389)
+##    #Rank Offset Example
+#    for rate in [.3, .5, .6 ]:
+#        for e in [.75, .8, .85]    :
 
-    mytrainer = TrainingInterface({"naive":mylearner, "safe":safelearner})
-    mytrainer.set_eval_mode("Rank Offset",2)
+    mylearner = Naive(3389)
+    mydict = {"naive":mylearner}
+    #for state in [5,7,9]:
+    for rate in [.3]:
+        state = 9
+        #rate = .3
+        e = .8
+        #state = 13
+        safelearner = eSafe(state,3389, rate, e)
+        mydict["safe" + str(rate)] = safelearner
+        print "with state" + str(state)
+    mytrainer = TrainingInterface(mydict)
+    mytrainer.set_eval_mode("Rank Offset",4)
     mytrainer.train(path+fname,10000, 10, 2,100)
     safelearner.dump_distr("safe_mtrx.dat")
+
 
 ##    myfile= open(path+fname)
 ##    count = 0

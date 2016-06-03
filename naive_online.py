@@ -4,7 +4,7 @@ import numpy as np
 import random as rnd
 import matplotlib.pyplot as plt
 import scipy.stats as stats
-
+import math
 
 data_dict={'user_id':0,
            'start_time':1,
@@ -58,7 +58,7 @@ class TrainingInterface:
                     if eval_count >= eval_length:
                         break
 
-                if count%100 == 0:
+                if count%1000 == 0:
                         print "Trained on "+str(count)+" Evaluated on "+str(eval_count)+"..."
                 count +=1
 
@@ -151,14 +151,22 @@ class TrainingInterface:
     def eval_plot(self, xvals, bucket_size = 1):
         """Prints data for different evaluation modes."""
         plt.style.use('ggplot')
-
+        
         if self.eval_mode == "None":
             return
         elif self.eval_mode == "Rank Offset":
             for i in range(self.eval_param):
                 for name, result in self.eval_output.iteritems():
+                    with open('data_rate.txt', 'a') as the_file:
+                        the_file.write(name + " Pos#" + str(i))
+                        the_file.write("\n")
+                        for elem in result[i]:                 
+                            the_file.write(str(elem))
+                            the_file.write("\n")
+                    the_file.close()
                     (xvals_toplot, toplot) =  self.create_bucket(xvals, result[i], bucket_size)
-                    plt.plot(xvals_toplot, toplot, label = name + " Pos#" + str(i))
+                    to_plot = [math.log10(v)  if v > 0 else 0 for v in toplot]
+                    plt.plot(xvals_toplot, to_plot, label = name + " Pos#" + str(i))
                 plt.plot([0,xvals_toplot[-1]], [0.5, 0.5],
                             label = "Random Baseline", color='k', linestyle='-', linewidth=2)
                 plt.ylabel('Rank Offset Percentile')
