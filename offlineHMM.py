@@ -6,6 +6,7 @@ import numpy as np
 import random as rnd
 from numpy import linalg as LA
 import pickle
+import esafe
 
 data_dict={'user_id':0,
            'start_time':1,
@@ -25,6 +26,7 @@ class offlineHMM:
         self.start_idx = 0                              #start state index
         self.end_idx = -1                               #end state index
         self.word_dict={i:i for i in range(self.num_obs)}
+        self.online = None                              #online predictor is stored here if necessary
         np.random.seed(123456)                          #set seed for reproducibility
         rnd.seed(123456)
 
@@ -327,6 +329,34 @@ class offlineHMM:
         res = np.nan_to_num(res)
         return res
 
+    ##################################################################################
+        ### ONLINE COMPARISON METHODS ###
+        ### Wrappers for underlying eSafe learner"""
+
+    def init_online(self, filename):
+        """ Initalizes the offline HMM so that results/predictions can be evaluated online
+            Input: filename containing distributions."""
+
+        A=[]
+        O=[]
+        with open(filename, "rb") as f:
+            in_dict = pickle.load(f)
+            A = in_dict["trans"]
+            O = in_dict["obs"]
+
+        self.online = esafe.eSafe(self.num_states - 2,self.num_obs,1, 1, A, O)
+
+        return
+
+    def eval_seq(self, seq):
+        """ Evaluate sequence using wrapper."""
+        return self.online.eval_seq(seq)
+
+    def train_on_seq(self, seq):
+        """ Discards input, since doesn't train online"""
+
+        return
+
     ###################################################################################
         ### I/O METHODS ###
 
@@ -349,7 +379,7 @@ class offlineHMM:
         with open(filename, "rb") as f:
             in_dict = pickle.load(f)
             self.A = in_dict["trans"]
-            self.O = in_dict["obs"]
+            self.O = np.transpose(in_dict["obs"])
 
 def main():
     # Test on sample

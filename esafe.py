@@ -15,16 +15,17 @@ import matplotlib.pyplot as plt
 import pickle
 
 from naive_online import Naive, TrainingInterface
+import offlineHMM
 
 class eSafe:
     ### Initialization Methods ###
-    def __init__(self, _num_states, _num_obs,rt ,e1, prior_trans = None, prior_obs = None,  ):
+    def __init__(self, _num_states, _num_obs, rt , e1, prior_trans = None, prior_obs = None,  ):
         """
         Constructor.
         Optional inputs for prior distributions.
         """
         # rt will be miultiplied by 1/3389 to generate the learning rate
-        # e1 is the safe probability 
+        # e1 is the safe probability
         #constant
         self.num_states =_num_states + 2                #+2 for start & end state
         self.num_obs = _num_obs
@@ -324,17 +325,25 @@ def plot_by_seq_len(self, learner, length_range):
 
 def main():
     # Test on sample
- #   path="D:\\Datasets\\ML_Datasets\\seq_data\\"
+    path="D:\\Datasets\\ML_Datasets\\seq_data\\"
 
-    #path="D:/Assignments/CS 159/e-safe"
-    path=""
-    fname='data_2_1.txt' #max value is 3388
-#
+    fname='data_2_1.txt' #max value is 3389
+
+    naive = Naive(3389)
+    safelearner = eSafe(4, 3389, 0.3, 0.8)
+    hmm = offlineHMM.offlineHMM(4, 3389)
+    hmm.init_online("hmm_base_10k.dat")
+    mydict = {"naive": naive, "safe":safelearner,"hmm":hmm}
+    mytrainer =  TrainingInterface(mydict)
+    mytrainer.set_eval_mode("Rank Offset",3)
+    mytrainer.train(path+fname,1000,bucket_size=20)
+    return
+
     #KL Distribution divergence example
 #    safelearner = eSafe(4,3389)
 #    with open('hmm_base_10k.dat','r') as f:
 #        data_hmm = pickle.load(f)   #previously trained on first 10k sequences in data_2_1.txt
-#    mydict = {"safe":safelearner}   
+#    mydict = {"safe":safelearner}
 #    mydict["safe2"] = safelearner2
 #    mytrainer = TrainingInterface(mydict)
 #    mytrainer.set_eval_mode("Kullback-Leibler",data_hmm)
@@ -382,22 +391,6 @@ def main():
 ##    print count
 ##    print "Max: "+str(run_max)
 ##    print "Min: "+str(run_min)
-
-##    #two states healthy (0) and fever(1) -> health (1) and fever (2)
-##    #three observations dizzy (0), cold (1) and normal (2)
-##    trans = np.array([[0,0.6,0.4,0],
-##                      [0,0.6,0.3,0.1],
-##                      [0,0.3,0.6,0.1],
-##                      [0,0,0,0]])
-##    obs = np.array([[0,0,0],
-##                    [0.1,0.4,0.5],
-##                    [0.6,0.3,0.1],
-##                    [0.5,0.4,0.1]])
-##
-##    mylearner=eSafe(2,3,trans,obs)
-##
-##    #viterbi test
-##    print mylearner.get_prob_seq([2],False)
 
 if __name__ == '__main__':
     main()
