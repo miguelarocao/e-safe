@@ -29,9 +29,9 @@ class eSafe:
         #constant
         self.num_states =_num_states + 2                #+2 for start & end state
         self.num_obs = _num_obs
-        self.learn_rate = rt/_num_obs                  #learning rate
-        print "learn rate" + str(rt)
-        print "e" + str(e1)
+        self.learn_rate = rt*1.0/_num_obs                  #learning rate
+        print "learn rate " + str(rt)
+        print "e " + str(e1)
         self.e = e1                                    #probability that algorithm picks safest (most probable) event
         self.start = 0                                  #start state index
         self.end = self.num_states - 1                  #end state index
@@ -330,13 +330,16 @@ def main():
     fname='data_2_1.txt' #max value is 3389
 
     naive = Naive(3389)
-    safelearner = eSafe(4, 3389, 0.3, 0.8)
+
+    safelearner = eSafe(9, 3389, 0.3, 0.8)
+
     hmm = offlineHMM.offlineHMM(4, 3389)
-    hmm.init_online("hmm_base_10k.dat")
-    mydict = {"naive": naive, "safe":safelearner,"hmm":hmm}
+    hmm.init_online("hmm_base_9.dat")
+
+    mydict = {"naive": naive, "e-safe":safelearner,"hmm":hmm}
     mytrainer =  TrainingInterface(mydict)
-    mytrainer.set_eval_mode("Rank Offset",3)
-    mytrainer.train(path+fname,1000,bucket_size=20)
+    mytrainer.set_eval_mode("Rank Offset",4)
+    mytrainer.train(path+fname,eval_length=20000, eval_start=0, eval_step=1, bucket_size=100)
     return
 
     #KL Distribution divergence example

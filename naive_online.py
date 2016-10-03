@@ -166,24 +166,25 @@ class TrainingInterface:
                     the_file.close()
                     (xvals_toplot, toplot) =  self.create_bucket(xvals, result[i], bucket_size)
                     to_plot = [math.log10(v)  if v > 0 else 0 for v in toplot]
-                    plt.plot(xvals_toplot, to_plot, label = name )
+                    plt.plot(xvals_toplot, to_plot, label = name, linewidth=2)
                 #plt.plot([0,xvals_toplot[-1]], [0.5, 0.5],
                  #           label = "Random Baseline", color='k', linestyle='-', linewidth=2)
                 plt.ylabel('Rank Offset Percentile (log10)')
                 plt.xlabel('Sequence Count')
-                plt.title('Rank Offset ' + " Pos#" + str(i) )
+                plt.title('Rank Offset for Position ' + str(i) )
                 plt.legend()
                 plt.show()
             for i in range(self.eval_param):
                 for name, result in self.eval_output.iteritems():
-                    plt.plot(xvals, result[i], label = name + " Pos#" + str(i))
+                    (xvals_toplot, toplot) = self.create_bucket(xvals, result[i], bucket_size)
+                    plt.plot(xvals_toplot, toplot, label = name, linewidth=2)
                 plt.plot([0,xvals_toplot[-1]], [0.5, 0.5],
                             label = "Random Baseline", color='k', linestyle='-', linewidth=2)
                 plt.ylabel('Rank Offset Percentile')
                 plt.xlabel('Sequence Count')
-                plt.title('Rank Offset for Sequences of Length '+str(self.eval_param))
+                plt.title('Rank Offset for Position ' + str(i))
                 plt.legend()
-                plt.show()                
+                plt.show()
         elif self.eval_mode == "Kullback-Leibler":
             for mtrx in self.eval_param.iterkeys():
                 for name, result in self.eval_output.iteritems():
