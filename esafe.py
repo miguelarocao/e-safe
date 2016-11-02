@@ -2,11 +2,6 @@
 ## Miguel Aroc-Ouellette
 
 # TODO: Improve Learning rate formula
-# TODO: Find appropriate leraning rate
-# TODO: Find appropriate # of hidden states
-# TODO: Find appropriate e (safe probaility variable)
-# TODO: Improve rank comparison, maybe group by 10 minutes and take average?
-# TODO: Add distribution based comparison
 
 import numpy as np
 import random as rnd
